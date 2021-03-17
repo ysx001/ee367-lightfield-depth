@@ -11,7 +11,7 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.utils import Sequence
-from keras.layers import LeakyReLU
+from tensorflow.keras.layers import LeakyReLU
 from sklearn.feature_extraction import image
 import os
 import argparse
@@ -46,12 +46,13 @@ def hsv_depth(refocus_shifts, max_ind, grads):
     io.imsave('depth.png', img_to_uint8(depth))
     return depth
 
-def build_mlp(input_shape, layers):
+def build_mlp(input_shape, layers, leaky_alpha=0.1):
     # Create model architecture
     model = Sequential()
     model.add(Dense(units=input_shape, input_shape=(input_shape, ), activation='relu'))
     for layer in layers:
-        model.add(Dense(units=layer, activation='relu'))
+        model.add(Dense(units=layer))
+        model.add(LeakyReLU(alpha=leaky_alpha))
     model.add(Dense(units=1, activation='relu'))
     return model
 
@@ -101,7 +102,7 @@ def get_data(prefix, usage, sample_data_size=None, patch_size=(1, 1), depth="sma
     return X, Y
 
 def train(patch_size, depth="small", n_shifts=64, network_layers=[64, 32, 16], lr=0.0001,
-          batch_size=512, data_prefix="../data/rendered_processed"):
+          leaky_alpha=0.1, batch_size=512, data_prefix="../data/rendered_processed"):
     train_x, train_y = get_data(data_prefix, "train", patch_size=patch_size, depth=depth)
     val_x, val_y = get_data(data_prefix, "val", patch_size=patch_size, depth=depth)
 
@@ -119,7 +120,7 @@ def train(patch_size, depth="small", n_shifts=64, network_layers=[64, 32, 16], l
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=1e-6)
 
     model_input_shape = n_shifts * patch_size[0] * patch_size[1]
-    model = build_mlp(model_input_shape, network_layers)
+    model = build_mlp(model_input_shape, network_layers, leaky_alpha=leaky_alpha)
 
     opt = Adam(learning_rate=lr)
     model.compile(loss='mean_absolute_error', optimizer=opt, metrics=['mean_squared_error'])
