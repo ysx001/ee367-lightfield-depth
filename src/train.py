@@ -7,11 +7,10 @@ from pathlib import Path
 from tqdm import tqdm
 from itertools import product
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, LeakyReLU, Dropout
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.utils import Sequence
-from tensorflow.keras.layers import LeakyReLU
 from sklearn.feature_extraction import image
 import os
 import argparse
@@ -28,13 +27,14 @@ def plot_all_in_focus(focus_stack, max_ind):
             all_in_focus[y, x, :] = focus_stack[max_ind[y, x], y, x, :]
     io.imsave('all_in_focus.png', img_to_uint8(all_in_focus ** (1/2.2)))
 
-def build_mlp(input_shape, layers, leaky_alpha=0.1):
+def build_mlp(input_shape, layers, leaky_alpha=0.1, dropout_rate=0.1):
     # Create model architecture
     model = Sequential()
     model.add(Dense(units=input_shape, input_shape=(input_shape, ), activation='relu'))
     for layer in layers:
         model.add(Dense(units=layer))
-        model.add(LeakyReLU(alpha=leaky_alpha))
+        model.add(LeakyReLU(alpha=leaky_alpha)) # activation between fully connected layers
+        model.add(Dropout(rate=dropout_rate)) # prevent overfitting
     model.add(Dense(units=1, activation='relu'))
     return model
 
@@ -87,11 +87,12 @@ def get_data(prefix, usage, sample_data_size=None, patch_size=(1, 1), depth="sma
 
 def train(patch_size, depth="small", n_shifts=64, normalize=True,
           network_layers=[64, 32, 16], lr=0.0001,
-          leaky_alpha=0.1, batch_size=512, data_prefix="../data/rendered_processed"):
+          leaky_alpha=0.1, dropout_rate=0.1, 
+          batch_size=512, data_prefix="../data/rendered_processed"):
     train_x, train_y = get_data(data_prefix, "train", patch_size=patch_size, depth=depth, normalize=normalize)
     val_x, val_y = get_data(data_prefix, "val", patch_size=patch_size, depth=depth, normalize=normalize)
 
-    checkpoint_filepath= f"ckpts_{depth}_{patch_size[0]}_{len(network_layers)}_{network_layers[0]}_normal/train"
+    checkpoint_filepath= f"ckpts_{depth}_{patch_size[0]}_{len(network_layers)}_{network_layers[0]}_normal_drop/train"
     
     model_checkpoint_callback = ModelCheckpoint(
         filepath=checkpoint_filepath,
@@ -105,7 +106,7 @@ def train(patch_size, depth="small", n_shifts=64, normalize=True,
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=1e-6)
 
     model_input_shape = n_shifts * patch_size[0] * patch_size[1]
-    model = build_mlp(model_input_shape, network_layers, leaky_alpha=leaky_alpha)
+    model = build_mlp(model_input_shape, network_layers, leaky_alpha=leaky_alpha, dropout_rate=dropout_rate)
 
     opt = Adam(learning_rate=lr)
     model.compile(loss='mean_absolute_error', optimizer=opt, metrics=['mean_squared_error'])
