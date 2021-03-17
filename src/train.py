@@ -110,6 +110,7 @@ def train(patch_size, depth="small", n_shifts=64, normalize=True,
 
     opt = Adam(learning_rate=lr)
     model.compile(loss='mean_absolute_error', optimizer=opt, metrics=['mean_squared_error'])
+    model.summary()
     history = model.fit(train_x, train_y,
                         validation_data=(val_x, val_y),
                         epochs=10000, batch_size=batch_size,
