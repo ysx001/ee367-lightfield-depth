@@ -5,6 +5,7 @@ from tqdm import tqdm
 from scipy.interpolate import interp2d
 from itertools import product
 
+from utils import calcualte_refocus_shifts, calculate_refocus_grad
 import file_io
 
 def load_data_folder(data_dir):
@@ -14,15 +15,6 @@ def load_data_folder(data_dir):
             continue
         directories.append(dirpath)
     return directories
-
-def calcualte_refocus_shifts(depth_map, depth_res=64):
-    depth_max = np.max(depth_map)
-    depth_min = np.min(depth_map)
-    depth_step = (depth_max - depth_min) / depth_res
-    refocus_shifts = np.arange(depth_min, depth_max, depth_step)
-    print(f"Min Depth: {depth_min}, Max Depth: {depth_max}, step: {depth_step}")
-    print(refocus_shifts[0], refocus_shifts[-1])
-    return refocus_shifts
 
 def load_rendered_light_field(data_folder):
     params = file_io.read_parameters(data_folder)
@@ -75,35 +67,6 @@ def load_lytro_light_field(image_path, microlens_size, depth_map_path=None):
         return light_field, depth_map, interp_fns
     return light_field, None, interp_fns
 
-def calculate_refocus(light_field, interp_fns, refocus_shifts):
-    X, Y = np.array(range(light_field.shape[1])), np.array(range(light_field.shape[0]))
-    microlens_size = light_field.shape[2]
-    grads = np.zeros((len(refocus_shifts), light_field.shape[0], light_field.shape[1]))
-    focus_stack = np.zeros((len(refocus_shifts), light_field.shape[0], light_field.shape[1], light_field.shape[4]))
-    print("Shifting images")
-    for g, refocusShift in enumerate(refocus_shifts):
-        stack = np.zeros((microlens_size ** 2, light_field.shape[0], light_field.shape[1], light_field.shape[4]))
-        for i, (ky, kx) in tqdm(enumerate(product(range(microlens_size), range(microlens_size)))):
-            maxU = (microlens_size - 1)/2
-            maxV = (microlens_size - 1)/2
-            # Get u, v coordinates (normalized to [-1,1])
-            u = (ky - maxU)/maxU
-            v = (kx - maxV)/maxV
-            # print(u, v)
-
-            # Shift each channel
-            shifted = np.zeros((light_field.shape[0], light_field.shape[1], light_field.shape[4]))
-            for c in range(light_field.shape[4]):
-                shifted[..., c] = interp_fns[ky][kx][c](X + v*refocusShift, Y + u*refocusShift)
-            stack[i, ...] = shifted
-        refocused = np.sum(stack, axis=0)/(microlens_size ** 2)
-        focus_stack[g, ...] = refocused
-        # Compute gradients
-        Dx = np.diff(refocused, axis=1, append=0)
-        Dy = np.diff(refocused, axis=0, append=0)
-        grads[g, ...] = np.sum(np.sqrt(Dx ** 2 + Dy ** 2), axis=-1)
-    return focus_stack, grads
-
 def load_data(prefix, usage="train"):
     data_directories = load_data_folder(os.path.join(prefix, usage))
     file_names = []
@@ -111,6 +74,8 @@ def load_data(prefix, usage="train"):
     result_path = f"{prefix}_processed"
     for data_directory in tqdm(data_directories):
         file_name = data_directory.split('/')[-1]
+        if file_name != 'vinyl':
+            continue
         file_names.append(file_name)
         print(f'Loading Light Field Data {file_name}')
         # load light field data
@@ -119,17 +84,48 @@ def load_data(prefix, usage="train"):
         refocus_shifts = calcualte_refocus_shifts(depth_map)
         print(len(refocus_shifts))
         # Calculate refocus stack and gradients
-        focus_stack, grads = calculate_refocus(light_field, interp_fns, refocus_shifts)
+        focus_stack, grads = calculate_refocus_grad(light_field, interp_fns, refocus_shifts)
         # save results
         grads_file_name = f"{file_name}_grads.npy"
         focus_stack_file_name = f"{file_name}_focus_stack.npy"
         depth_map_file_name = f"{file_name}_depth_map.npy"
+        refocus_shift_file_name = f"{file_name}_refocus_shift.npy"
         np.save(os.path.join(result_path, usage, depth_map_file_name), depth_map)
         np.save(os.path.join(result_path, usage, grads_file_name), grads)
         np.save(os.path.join(result_path, usage, focus_stack_file_name), focus_stack)
+        np.save(os.path.join(result_path, usage, refocus_shift_file_name), refocus_shifts)
     np.save(os.path.join(result_path, usage, file_names_file_name), np.array(file_names))
+
+LARGE = ['tomb', 'platonic', 'sideboard', 'dishes', 'town', 'dots', 'pyramids', 'tower'] # min depth > 10
+MEDIUM = ['antinous', 'stripes', 'dino', 'pens', 'greek', 'medieval2', 'backgammon', 'museum'] # min depth > 4 < 10
+SMALL = ['boxes', 'kitchen', 'table', 'boardgames', 'cotton', 'pillows', 'rosemary', 'vinyl'] # min depth > 4 < 10
+from scipy.io import loadmat
+def save_defocus_corres_to_npy(mat_prefix, prefix, usage, depth="small"):
+    data_directories = load_data_folder(os.path.join(prefix, usage))
+    print(data_directories)
+    result_path = f"{prefix}_processed"
+    for data_directory in tqdm(data_directories):
+        file_name = data_directory.split('/')[-1]
+        print(file_name)
+        if depth == "small" and file_name not in SMALL:
+            continue
+        elif depth == "medium" and file_name not in MEDIUM:
+            continue
+        elif depth == "large" and file_name not in LARGE:
+            continue
+        print(f'Loading Light Field Data {file_name}')
+        defocus_corres_mat = loadmat(os.path.join(mat_prefix, f"{file_name}_defocus_corres.mat"))
+        defocus_stack_file_name = f"{file_name}_defocus_stack.npy"
+        correspondence_stack_file_name = f"{file_name}_correspondence_stack.npy"
+        np.save(os.path.join(result_path, usage, defocus_stack_file_name), defocus_corres_mat['defocus_stack'])
+        np.save(os.path.join(result_path, usage, correspondence_stack_file_name), defocus_corres_mat['correspondence_stack'])
 
 # load_data("../data/rendered", usage="train")
 # load_data("../data/rendered", usage="val")
 # load_data("../data/rendered", usage="test")
+
+# save_defocus_corres_to_npy("defocus_correspondence", "../data/rendered", usage="train", depth="small")
+save_defocus_corres_to_npy("defocus_correspondence", "../data/rendered", usage="val", depth="small")
+# save_defocus_corres_to_npy("defocus_correspondence", "../data/rendered", usage="test", depth="small")
+
 

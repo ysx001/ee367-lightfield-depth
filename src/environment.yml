@@ -1,0 +1,16 @@
+name: ee367-lfd
+channels:
+  - defaults
+dependencies:
+  - python=3.7
+  - notebook
+  - numpy
+  - scipy
+  - pip
+  - tqdm
+  - matplotlib
+  - scikit-image
+  - pip:
+      - pypher
+  - sklearn
+  - tensorflow
