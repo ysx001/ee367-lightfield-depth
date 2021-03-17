@@ -28,24 +28,6 @@ def plot_all_in_focus(focus_stack, max_ind):
             all_in_focus[y, x, :] = focus_stack[max_ind[y, x], y, x, :]
     io.imsave('all_in_focus.png', img_to_uint8(all_in_focus ** (1/2.2)))
 
-def get_depth(grads):
-    max_ind = np.argmax(grads, axis=0)
-    # print(np.array(refocus_shifts)[max_ind])
-    return max_ind
-
-def hsv_depth(refocus_shifts, max_ind, grads):
-    # HSV-based depth
-    H = np.array(refocus_shifts)[max_ind]
-    H = (H - np.min(H))/(np.max(H) - np.min(H))
-    S = np.ones_like(max_ind)
-    V = np.max(grads, axis=0)
-    V /= np.max(V)
-    hsv = np.stack((H, S, V * 4), axis=-1)
-    depth = hsv2rgb(hsv)
-    depth = np.clip(depth, 0., 1.)
-    io.imsave('depth.png', img_to_uint8(depth))
-    return depth
-
 def build_mlp(input_shape, layers, leaky_alpha=0.1):
     # Create model architecture
     model = Sequential()
@@ -59,7 +41,7 @@ def build_mlp(input_shape, layers, leaky_alpha=0.1):
 LARGE = ['tomb', 'platonic', 'sideboard', 'dishes', 'town', 'dots', 'pyramids', 'tower'] # min depth > 10
 MEDIUM = ['antinous', 'stripes', 'dino', 'pens', 'greek', 'medieval2', 'backgammon', 'museum'] # min depth > 4 < 10
 SMALL = ['boxes', 'kitchen', 'table', 'boardgames', 'cotton', 'pillows', 'rosemary', 'vinyl'] # min depth > 4 < 10
-def get_data(prefix, usage, sample_data_size=None, patch_size=(1, 1), depth="small"):
+def get_data(prefix, usage, sample_data_size=None, patch_size=(1, 1), depth="small", normalize=True):
     file_names = np.load(os.path.join(prefix, usage, "file_names.npy"))
     idx = 0
     for file_name in file_names:
@@ -83,6 +65,8 @@ def get_data(prefix, usage, sample_data_size=None, patch_size=(1, 1), depth="sma
         y_gt_clip = y_gt[clip_x: gt_res_i-clip_x, clip_y: gt_res_j - clip_y]
         res_i, res_j = y_gt_clip.shape
         y = y_gt_clip.reshape(res_i * res_j)
+        if normalize:
+            y = (y - np.min(y)) / np.ptp(y)
 
         if patch_size[0] == 3:
             sample_data_size = 100000
@@ -101,12 +85,13 @@ def get_data(prefix, usage, sample_data_size=None, patch_size=(1, 1), depth="sma
         idx += 1
     return X, Y
 
-def train(patch_size, depth="small", n_shifts=64, network_layers=[64, 32, 16], lr=0.0001,
+def train(patch_size, depth="small", n_shifts=64, normalize=True,
+          network_layers=[64, 32, 16], lr=0.0001,
           leaky_alpha=0.1, batch_size=512, data_prefix="../data/rendered_processed"):
-    train_x, train_y = get_data(data_prefix, "train", patch_size=patch_size, depth=depth)
-    val_x, val_y = get_data(data_prefix, "val", patch_size=patch_size, depth=depth)
+    train_x, train_y = get_data(data_prefix, "train", patch_size=patch_size, depth=depth, normalize=normalize)
+    val_x, val_y = get_data(data_prefix, "val", patch_size=patch_size, depth=depth, normalize=normalize)
 
-    checkpoint_filepath= f"ckpts_{depth}_{patch_size[0]}_{len(network_layers)}_{network_layers[0]}/train"
+    checkpoint_filepath= f"ckpts_{depth}_{patch_size[0]}_{len(network_layers)}_{network_layers[0]}_normal/train"
     
     model_checkpoint_callback = ModelCheckpoint(
         filepath=checkpoint_filepath,
@@ -156,9 +141,9 @@ if __name__ == '__main__':
 
     #%%
     model = train(data_prefix="../data/rendered_processed",
-                patch_size=patch_size,
-                n_shifts=n_shifts,
-                depth=args.depth,
-                batch_size=512,
-                lr=args.lr,
-                network_layers=network_layers)
+                  patch_size=patch_size,
+                  n_shifts=n_shifts,
+                  depth=args.depth,
+                  batch_size=512,
+                  lr=args.lr,
+                  network_layers=network_layers)
