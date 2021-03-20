@@ -60,12 +60,20 @@ def get_data(prefix, usage, sample_data_size=None, patch_size=(1, 1), depth="sma
         x_grad = x_grad.reshape(n_patchs, n_shifts * patch_size[0] * patch_size[1])
 
         x_defocus = np.load(os.path.join(prefix, usage, f"{file_name}_defocus_stack.npy"))
-        # x_defocus = np.moveaxis(x_defocus, 0, -1)
+        x_defocus_max_ind = np.argmax(x_defocus, axis=2)
+        x_defocus_max_ind = (x_defocus_max_ind - np.min(x_defocus_max_ind)) / np.ptp(x_defocus_max_ind)
+        x_defocus_max_ind = image.extract_patches_2d(x_defocus_max_ind, patch_size)
+        x_defocus_max_ind = x_defocus_max_ind.reshape(n_patchs, patch_size[0] * patch_size[1])
         x_defocus = image.extract_patches_2d(x_defocus, patch_size)
         n_patchs, _, _, n_shifts = x_defocus.shape
         x_defocus = x_defocus.reshape(n_patchs, n_shifts * patch_size[0] * patch_size[1])
+        
 
         x_corres = np.load(os.path.join(prefix, usage, f"{file_name}_correspondence_stack.npy"))
+        x_corres_min_ind = np.argmin(x_corres, axis=2)
+        x_corres_min_ind = (x_corres_min_ind - np.min(x_corres_min_ind)) / np.ptp(x_corres_min_ind)
+        x_corres_min_ind = image.extract_patches_2d(x_corres_min_ind, patch_size)
+        x_corres_min_ind = x_corres_min_ind.reshape(n_patchs, patch_size[0] * patch_size[1])
         # x_corres = np.moveaxis(x_corres, 0, -1)
         x_corres = image.extract_patches_2d(x_corres, patch_size)
         n_patchs, _, _, n_shifts = x_corres.shape
@@ -80,7 +88,7 @@ def get_data(prefix, usage, sample_data_size=None, patch_size=(1, 1), depth="sma
         if normalize:
             y = (y - np.min(y)) / np.ptp(y)
 
-        x = np.concatenate((x_grad, x_defocus, x_corres), axis=1)
+        x = np.concatenate((x_grad, x_defocus, x_corres, x_defocus_max_ind, x_corres_min_ind), axis=1)
         print(x.shape)
 
         if patch_size[0] == 3:
@@ -119,9 +127,9 @@ def train(patch_size, depth="small", n_shifts=64, normalize=True,
 
     early_stop_callback = EarlyStopping(monitor='loss', patience=10)
 
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-10)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3, min_lr=1e-10)
 
-    model_input_shape = n_shifts * patch_size[0] * patch_size[1] * 3
+    model_input_shape = n_shifts * patch_size[0] * patch_size[1] * 3 + (2 * patch_size[0] * patch_size[1])
     model = build_mlp(model_input_shape, network_layers, leaky_alpha=leaky_alpha, dropout_rate=dropout_rate)
 
     opt = Adam(learning_rate=lr)
@@ -147,6 +155,9 @@ if __name__ == '__main__':
     parser.add_argument('--network_layers',
                         help='Network layers comma delimited',
                         type=str)
+    parser.add_argument('--dropout_rate',
+                    help='Dropout rate',
+                    type=float)
     args = parser.parse_args()
 
     # %%
@@ -164,5 +175,5 @@ if __name__ == '__main__':
                   depth=args.depth,
                   batch_size=512,
                   lr=args.lr,
-                  dropout_rate=0.5,
+                  dropout_rate=args.dropout_rate,
                   network_layers=network_layers)

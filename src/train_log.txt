@@ -1,0 +1,93 @@
+
+
+patch_size 1, lr 0.001, depth small, network_layers=[256, 128, 64, 32]
+loss: 0.3037 - mean_squared_error: 0.3928 - val_loss: 0.9175 - val_mean_squared_error: 2.0658
+
+patch_size 1, lr 0.0001, depth small, network_layers=[256, 128, 64, 32]
+
+patch_size 3, lr 0.0001, depth small, network_layers=[256, 128, 64, 32]
+loss: 0.15 - mean_squared_error: 0.15 - val_loss: 0.9175 - val_mean_squared_error: 2.0658
+
+patch_size 3, lr 0.001, depth small, network_layers=[256, 128, 64, 32]
+loss: 2.7424 - mean_squared_error: 9.5207 - val_loss: 1.3367 - val_mean_squared_error: 1.8344
+
+patch_size 5, lr 1e-5, depth small network_layers=[256, 128, 64, 32] 309/10000
+loss: 0.6882 - mean_squared_error: 0.9029 - val_loss: 1.0629 - val_mean_squared_error: 1.4800
+
+patch_size 5, lr 0.001, depth small, l2 training: , mse validation: , mse test: 
+
+python train.py --depth "large" --patch_size 1 --lr 1e-4 --network_layers "256,128,64,32"  
+
+# normalized input to network, leaky relu
+python train.py --depth "small" --patch_size 3 --lr 1e-5 --network_layers "256,128,64,32" 
+Epoch 81/10000 loss: 0.1549 - mean_squared_error: 0.0452 - val_loss: 0.3443 - val_mean_squared_error: 0.1702
+
+
+# normalized input to network, leaky relu (tmux 1)
+python train.py --depth "small" --patch_size 5 --lr 1e-6 --network_layers "1024,512,256,64,32" 
+
+# normalized input to network, leaky relu, dropout (tmux 3)
+python train.py --depth "small" --patch_size 3 --lr 1e-5 --network_layers "256,128,64,32" 
+
+# normalized input to network, leaky relu, dropout (tmux 0)
+python train.py --depth "large" --patch_size 3 --lr 1e-5 --network_layers "256,128,64,32" 
+
+# normalized input to network, leaky relu, dropout
+python train.py --depth "small" --patch_size 5 --lr 1e-7 --network_layers "1024,512,256,64,32"
+
+loss: 0.4245 - mean_squared_error: 0.2710 - val_loss: 0.5658 - val_mean_squared_error: 0.4231
+
+# normalized input to network, leaky relu
+
+python train.py --depth "small" --patch_size 1 --lr 1e-5 --network_layers "256,128,64,32"
+tep - loss: 0.1849 - mean_squared_error: 0.0608 - val_loss: 0.3368 - val_mean_squared_error: 0.1606
+
+# normalized input to network, leaky relu (tmux 2)
+% python train.py --depth "all" --patch_size 3 --lr 1e-5 --network_layers "256,128,64,32"
+
+
+
+# normalized input to network, leaky relu, dropout 
+python train.py --depth "small" --patch_size 1 --lr 1e-5 --network_layers "256,128,64,32" 
+loss: 0.1928 - mean_squared_error: 0.0642 - val_loss: 0.3490 - val_mean_squared_error: 0.1763
+
+# normalized input to network, leaky relu, dropout
+python train.py --depth "small" --patch_size 3 --lr 1e-5 --network_layers "256,128,64,32"
+loss: 0.1842 - mean_squared_error: 0.0588 - val_loss: 0.3448 - val_mean_squared_error: 0.1730
+
+# normalized input to network, leaky relu, dropout
+python train.py --depth "small" --patch_size 5 --lr 1e-5 --network_layers "256,128,64,32"
+loss: 0.1821 - mean_squared_error: 0.0587 - val_loss: 0.3426 - val_mean_squared_error: 0.1748
+
+
+# normalized input to network, leaky relu, dropout 0.2, add max min
+scp -r clouddesk:/home/saraxu/lightfield/src/ckpts_small_1_4_256_normal_0.2_defocus_corres .
+
+python train.py --depth "small" --patch_size 1 --lr 1e-5 --network_layers "256,128,64,32" --dropout_rate 0.2
+loss: 0.1098 - mean_squared_error: 0.0275 - val_loss: 0.2083 - val_mean_squared_error: 0.0818
+
+# normalized input to network, leaky relu, dropout 0.2, add max min
+python train.py --depth "small" --patch_size 3 --lr 1e-5 --network_layers "256,128,64,32" --dropout_rate 0.2
+loss: 0.1439 - mean_squared_error: 0.0376 - val_loss: 0.2549 - val_mean_squared_error: 0.1074
+
+# normalized input to network, leaky relu, dropout 0.2, add max min
+python train.py --depth "small" --patch_size 5 --lr 1e-6 --network_layers "256,128,64,32" --dropout_rate 0.2
+
+# normalized input to network, leaky relu, dropout 0.2, add max min (tmux 1)
+python train.py --depth "small" --patch_size 1 --lr 1e-5 --network_layers "256,128,64,32" --dropout_rate 0.5
+
+# normalized input to network, leaky relu, dropout 0.2, add max min (tmux 2)
+
+python train.py --depth "all" --patch_size 1 --lr 1e-5 --network_layers "256,128,64,32" --dropout_rate 0.2
+
+# normalized input to network, leaky relu, dropout 0.2, add max min (tmux 0)
+
+python train.py --depth "all" --patch_size 3 --lr 1e-5 --network_layers "256,128,64,32" --dropout_rate 0.2
+
+loss: 0.1039 - mean_squared_error: 0.0247 - val_loss: 0.1851 - val_mean_squared_error: 0.0667
+
+
+
+
+
+

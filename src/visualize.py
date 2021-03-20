@@ -35,15 +35,36 @@ def get_gt_depth_map(patch_size, prefix, usage, file_name):
 
 def evaluate(model, patch_size, prefix, usage, file_name):
     # load data
-    grads = np.load(os.path.join(prefix, usage, f"{file_name}_grads.npy"))
+    # grads = np.load(os.path.join(prefix, usage, f"{file_name}_grads.npy"))
     depth_map = np.load(os.path.join(prefix, usage, f"{file_name}_depth_map.npy"))
 
-    # reshape and calculate patch for loading into network
-    x = np.moveaxis(grads, 0, -1)
-    x = image.extract_patches_2d(x, patch_size)
-    n_patchs, _, _, n_shifts = x.shape
-    x = x.reshape(n_patchs, n_shifts * patch_size[0] * patch_size[1])
-    print(x.shape)
+    x_grad = np.load(os.path.join(prefix, usage, f"{file_name}_grads.npy"))
+    x_grad = np.moveaxis(x_grad, 0, -1)
+    x_grad = image.extract_patches_2d(x_grad, patch_size)
+    n_patchs, _, _, n_shifts = x_grad.shape
+    x_grad = x_grad.reshape(n_patchs, n_shifts * patch_size[0] * patch_size[1])
+
+    x_defocus = np.load(os.path.join(prefix, usage, f"{file_name}_defocus_stack.npy"))
+    x_defocus_max_ind = np.argmax(x_defocus, axis=2)
+    x_defocus_max_ind = (x_defocus_max_ind - np.min(x_defocus_max_ind)) / np.ptp(x_defocus_max_ind)
+    x_defocus_max_ind = image.extract_patches_2d(x_defocus_max_ind, patch_size)
+    x_defocus_max_ind = x_defocus_max_ind.reshape(n_patchs, patch_size[0] * patch_size[1])
+    x_defocus = image.extract_patches_2d(x_defocus, patch_size)
+    n_patchs, _, _, n_shifts = x_defocus.shape
+    x_defocus = x_defocus.reshape(n_patchs, n_shifts * patch_size[0] * patch_size[1])
+    
+
+    x_corres = np.load(os.path.join(prefix, usage, f"{file_name}_correspondence_stack.npy"))
+    x_corres_min_ind = np.argmin(x_corres, axis=2)
+    x_corres_min_ind = (x_corres_min_ind - np.min(x_corres_min_ind)) / np.ptp(x_corres_min_ind)
+    x_corres_min_ind = image.extract_patches_2d(x_corres_min_ind, patch_size)
+    x_corres_min_ind = x_corres_min_ind.reshape(n_patchs, patch_size[0] * patch_size[1])
+    # x_corres = np.moveaxis(x_corres, 0, -1)
+    x_corres = image.extract_patches_2d(x_corres, patch_size)
+    n_patchs, _, _, n_shifts = x_corres.shape
+    x_corres = x_corres.reshape(n_patchs, n_shifts * patch_size[0] * patch_size[1])
+
+    x = np.concatenate((x_grad, x_defocus, x_corres, x_defocus_max_ind, x_corres_min_ind), axis=1)
 
     # clip the boundaries of y according to the patch size
     clip_x, clip_y = int((patch_size[0] - 1) / 2), int((patch_size[0] - 1) / 2)
@@ -72,168 +93,93 @@ def hsv_depth(refocus_shifts, max_ind, grads):
 def normalize(img):
     return (img - np.min(img)) / np.ptp(img)
 
-#%%
 def mse(gt, test):
     return np.mean((gt - test)**2)
 
-#%%
-n_shifts = 64
-depth = "small"
-# patch_size = (1, 1)
-patch_size = (3, 3)
-# patch_size = (5, 5)
-network_layers = [256, 128, 64, 32]
+def visualize_results(prefix, file_name, usage, output_path, model, n_shifts, patch_size, network_layers):
+    mlp_depth, depth_map_clip = evaluate(model, patch_size, prefix, usage, file_name)
 
-# checkpoint_filepath= f"ckpts_{depth}_{patch_size[0]}/train"
-# checkpoint_filepath = "ckpts_small_3_4_256_normal_drop/train"
-checkpoint_filepath = "ckpts_all_3_4_256_normal_drop/train"
-model_input_shape = n_shifts * patch_size[0] * patch_size[1]
-model = build_mlp(model_input_shape, network_layers)
-model.load_weights(checkpoint_filepath)
+    # load other method results for comparison
+    refocus_depth = get_refocus_map(prefix, usage, file_name)
+    defocus_corres_mat = loadmat(os.path.join(prefix, usage, "defocus_correspondence_results", f"{file_name}_defocus_corres.mat"))
+    defocus_depth = defocus_corres_mat['defocus_depth']
+    defocus_corres_depth = defocus_corres_mat['depth_output']
+    corres_depth = defocus_corres_mat['corresp_depth']
+    defocus_stack = defocus_corres_mat['defocus_stack']
+    center_view = defocus_corres_mat['centerView']
 
-#%%
-# refocus_depth, mlp_depth, depth_map_clip = evaluate(model, patch_size, "../data/rendered_processed", "val", "rosemary" ) # small val
-file_name = "vinyl"
-refocus_depth = get_refocus_map("../data/rendered_processed", "test", file_name)
+    #%% crop
+    crop_x, crop_y = int((patch_size[0] - 1) / 2), int((patch_size[0] - 1) / 2)
+    gt_res_i, gt_res_j = defocus_depth.shape
 
-#%%
-file_name = "vinyl"
-mlp_depth, depth_map_clip = evaluate(model, patch_size, "../data/rendered_processed", "test", file_name) # small test
+    refocus_depth = refocus_depth[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
+    defocus_depth = defocus_depth[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
+    corres_depth = corres_depth[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
+    defocus_corres_depth = defocus_corres_depth[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
+    center_view = center_view[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
 
-#%%
-plt.imshow(mlp_depth)
-plt.colorbar()
-#%%
-file_name = "vinyl"
-patch_size = (3, 3)
+    mlp_depth_clip = np.clip(mlp_depth, 0.0, 1.0)
 
-refocus_depth = get_refocus_map("../data/rendered_processed", "test", file_name)
-depth_map_clip = get_gt_depth_map(patch_size, "../data/rendered_processed", "test", file_name)
+    refocus_depth_norm = normalize(refocus_depth)
+    defocus_depth_norm = normalize(defocus_depth)
+    corres_depth_norm = normalize(corres_depth)
+    defocus_corres_depth_norm = normalize(defocus_corres_depth)
+    gt_depth_map_norm = normalize(depth_map_clip)
 
-disparty_map_mat = loadmat(f"{file_name}_disparty.mat")
-defocus_corres_mat = loadmat(f"{file_name}_defocus_corres.mat")
+    plt.imshow(center_view)
+    plt.axis("off")
+    plt.savefig(os.path.join(output_path, f"{file_name}_center_view.png"))
+    plt.close("all")
 
-center_view = disparty_map_mat['centerView']
-disparty_map = disparty_map_mat['h_interp']
-gt_disparty_map = disparty_map_mat['GT_disparity']
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    plt.figure(figsize=(120,30))
+    ax = plt.gca()
+    im = ax.imshow(np.concatenate((
+                            refocus_depth_norm,
+                            corres_depth_norm,
+                            defocus_depth_norm,
+                            defocus_corres_depth_norm,
+                            mlp_depth_clip,
+                            gt_depth_map_norm), axis=1))
+    # plt.imshow()
+    plt.axis("off")
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="1%", pad=0.5)
+    plt.colorbar(im, cax=cax)
+    plt.savefig(os.path.join(output_path, f"{file_name}_depth_map_comparison.png"))
+    plt.close("all")
 
-defocus_depth = defocus_corres_mat['defocus_depth']
-defocus_corres_depth = defocus_corres_mat['depth_output']
-corres_depth = defocus_corres_mat['corresp_depth']
+    print(f"{file_name} refocus mse={mse(gt_depth_map_norm, refocus_depth_norm)}, \
+            correspondence mse={mse(gt_depth_map_norm, corres_depth_norm)}, \
+            defocus mse={mse(gt_depth_map_norm, defocus_depth_norm)}, \
+            defocus corres mse={mse(gt_depth_map_norm, defocus_corres_depth_norm)}, \
+            mlp mse={mse(gt_depth_map_norm, mlp_depth_clip)}")
 
-grads = np.load(os.path.join("../data/rendered_processed", "test", f"{file_name}_grads.npy"))
-defocus_stack = defocus_corres_mat['defocus_stack']
+if __name__ == '__main__':
+    n_shifts = 64 # best
+    # patch_size = (1, 1)
+    patch_size = (3, 3) # best
+    # patch_size = (5, 5)
+    network_layers = [256, 128, 64, 32] # best
+    # network_layers = [128, 64, 32]
 
-print(np.min(grads))
-print(np.max(grads))
+    #%%
+    # checkpoint_filepath = "checkpoints/ckpts_small_3_4_256_normal_drop/train"
+    # checkpoint_filepath = "checkpoints/ckpts_all_3_4_256_normal_drop/train"
+    # checkpoint_filepath = "checkpoints/ckpts_small_1_4_256_normal_0.2_defocus_corres/train"
+    # checkpoint_filepath = "checkpoints/ckpts_small_1_3_128_normal_0.2_defocus_corres/train"
+    # checkpoint_filepath = "checkpoints/ckpts_all_1_4_256_normal_0.2_defocus_corres/train" 
+    checkpoint_filepath = "checkpoints/ckpts_all_3_4_256_normal_0.2_defocus_corres/train" # best
+    model_input_shape = n_shifts * patch_size[0] * patch_size[1] * 3 + (2 * patch_size[0] * patch_size[1])
+    model = build_mlp(model_input_shape, network_layers)
+    model.load_weights(checkpoint_filepath)
 
-print(defocus_stack.shape)
+    usage="test"
+    file_names = ["vinyl", "tower", "museum"]
 
-print(np.min(defocus_stack))
-print(np.max(defocus_stack))
+    output_path="visual_output"
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
 
-print(np.min(refocus_depth))
-print(np.max(refocus_depth))
-
-print(np.min(defocus_depth))
-print(np.max(defocus_depth))
-
-print((refocus_depth + 1) - refocus_depth)
-
-
-#%%
-gt_depth_map_norm = normalize(depth_map_clip)
-gt_depth_map_norm = (gt_depth_map_norm * 63).astype(np.uint8)
-
-print(np.min(gt_depth_map_norm))
-print(np.max(gt_depth_map_norm))
-
-plt.imshow(gt_depth_map_norm)
-plt.colorbar()
-
-#%%
-file_names = np.load(os.path.join("../data/rendered_processed", "train", "file_names.npy"))
-print(file_names)
-
-#%% crop
-
-
-crop_x, crop_y = int((patch_size[0] - 1) / 2), int((patch_size[0] - 1) / 2)
-gt_res_i, gt_res_j, c = center_view.shape
-
-refocus_depth = refocus_depth[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
-
-center_view = center_view[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
-disparty_map = disparty_map[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
-gt_disparty_map = gt_disparty_map[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
-defocus_corres_depth = defocus_corres_depth[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
-defocus_depth = defocus_depth[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
-corres_depth = corres_depth[crop_x: gt_res_i-crop_x, crop_y: gt_res_j - crop_y]
-#%%
-# mlp_depth_norm = normalize(mlp_depth)
-
-refocus_depth_norm = normalize(refocus_depth)
-disparty_map_norm = normalize(disparty_map)
-defocus_corres_depth_norm = normalize(defocus_corres_depth)
-defocus_depth_norm = normalize(defocus_depth)
-corres_depth_norm = normalize(corres_depth)
-
-gt_depth_map_norm = normalize(depth_map_clip)
-
-plt.imshow(np.concatenate((mlp_depth,
-                           corres_depth_norm,
-                           refocus_depth_norm,
-                           defocus_depth_norm,
-                           defocus_corres_depth_norm,
-                           gt_depth_map_norm), axis=1))
-
-print(mse(gt_depth_map_norm, mlp_depth),
-    mse(gt_depth_map_norm, refocus_depth_norm),
-    mse(gt_depth_map_norm, defocus_corres_depth_norm),
-    mse(gt_depth_map_norm, corres_depth_norm))
-
-#%%
-plt.imshow(depth_map_clip_norm)
-plt.colorbar()
-
-#%%
-plt.imshow(refocus_depth_norm)
-plt.colorbar()
-
-#%%
-mlp_diff_norm = np.abs(depth_map_clip_norm - mlp_depth_norm)
-
-mlp_mse = np.mean((depth_map_clip_norm - mlp_depth_norm)**2)
-plt.imshow(mlp_diff_norm)
-plt.colorbar()
-
-#%%
-refocus_diff_norm = np.abs(depth_map_clip_norm - refocus_depth_norm)
-
-refocus_mse = np.mean((depth_map_clip_norm - refocus_depth_norm)**2)
-plt.imshow(refocus_diff_norm)
-plt.colorbar()
-
-#%%
-print(np.mean(mlp_diff_norm), np.mean(refocus_diff_norm))
-print(np.mean(mlp_mse), np.mean(refocus_mse))
-
-#%%
-plt.imshow(y_gt_clip)
-plt.colorbar()
-
-#%%
-plt.imshow(np.concatenate((y_test_clip, y_gt_clip), axis=1))
-plt.colorbar()
-
-#%%
-diff = np.abs(y_test - y_gt_clip)
-plt.imshow(diff)
-plt.colorbar()
-
-print(np.mean(diff))
-
-# %%
-percentage = diff / y_gt_clip
-plt.imshow(percentage)
-plt.colorbar()
+    for file_name in file_names:
+        visualize_results("../data/rendered_processed", file_name, usage, output_path, model, n_shifts, patch_size, network_layers)

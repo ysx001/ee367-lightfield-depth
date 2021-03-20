@@ -124,8 +124,8 @@ def save_defocus_corres_to_npy(mat_prefix, prefix, usage, depth="small"):
 # load_data("../data/rendered", usage="val")
 # load_data("../data/rendered", usage="test")
 
-# save_defocus_corres_to_npy("defocus_correspondence", "../data/rendered", usage="train", depth="small")
-save_defocus_corres_to_npy("defocus_correspondence", "../data/rendered", usage="val", depth="small")
-# save_defocus_corres_to_npy("defocus_correspondence", "../data/rendered", usage="test", depth="small")
+# save_defocus_corres_to_npy("defocus_correspondence", "../data/rendered", usage="train", depth="all")
+# save_defocus_corres_to_npy("defocus_correspondence", "../data/rendered", usage="val", depth="all")
+save_defocus_corres_to_npy("defocus_correspondence", "../data/rendered", usage="test", depth="medium")
 
 
